@@ -1,0 +1,21 @@
+{
+  "name": "expense-inbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "postal-mime": "^2.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -1,0 +1,79 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test before deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            Worker/package-lock.json
+            web/package-lock.json
+      - name: Worker checks
+        working-directory: Worker
+        run: npm ci && npx tsc --noEmit && npm test
+      - name: Web checks (needs Worker deps — PWA imports Worker/src/crypto.ts)
+        working-directory: web
+        run: npm ci && npx tsc -b && npx oxlint && npx vitest run
+
+  deploy-worker:
+    name: Deploy Worker (Cloudflare)
+    needs: test
+    # Off until the repo variable DEPLOY_ENABLED is set to "true".
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Worker/package-lock.json
+      - working-directory: Worker
+        run: npm ci
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: Worker
+          command: deploy
+
+  deploy-web:
+    name: Deploy Web (Cloudflare)
+    needs: test
+    # Off until the repo variable DEPLOY_ENABLED is set to "true".
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install deps (Worker too — web build imports Worker/src/crypto.ts)
+        run: |
+          npm ci --prefix Worker
+          npm ci --prefix web
+      - name: Build
+        working-directory: web
+        run: npm run build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web
+          command: deploy

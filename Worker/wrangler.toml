@@ -1,0 +1,19 @@
+# expense-inbox — inbound-email parser for Tally (see README.md for setup).
+name = "expense-inbox"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# Secrets (npx wrangler secret put …): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+# D1 binding retired with the store-and-forward API (2026-07-09); the Worker
+# writes parsed rows straight to Supabase. Drop the database itself only after
+# confirming nothing else uses it:
+#   npx wrangler d1 delete expensekit-db
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "expensekit-db"
+# database_id = "ad73f070-4957-4ce8-85d4-b1892cf233cc"
+
+[vars]
+# The domain mail arrives on (the zone Email Routing is enabled for).
+INBOX_DOMAIN = "expense-app.uk"

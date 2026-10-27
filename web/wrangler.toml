@@ -1,0 +1,9 @@
+# Tally web app — Cloudflare static assets. Deploy: npm run build && npx wrangler deploy
+name = "tally-web"
+compatibility_date = "2026-06-01"
+
+routes = [{ pattern = "tally.expense-app.uk", custom_domain = true }]
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"

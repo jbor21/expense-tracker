@@ -1,0 +1,27 @@
+@import '@fontsource-variable/fraunces';
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #101623;
+  --color-faint: #667085;
+  --color-paper: #f2f4f7;
+  --color-line: #e4e7ec;
+  --color-brand: #1d4ed8;
+  --color-over: #dc2626;
+  --color-under: #0e9f6e;
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-paper text-ink antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* Every monetary figure lines up in columns. */
+.amount {
+  font-variant-numeric: tabular-nums;
+}

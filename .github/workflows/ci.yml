@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker:
+    name: Worker — tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Worker/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
+  web:
+    name: Web — typecheck, lint, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            Worker/package-lock.json
+            web/package-lock.json
+      # The PWA imports Worker/src/crypto.ts relatively, so its typecheck/build
+      # needs the Worker's node_modules resolvable too.
+      - run: npm ci
+        working-directory: Worker
+      - run: npm ci
+        working-directory: web
+      - run: npx tsc -b
+        working-directory: web
+      - run: npx oxlint
+        working-directory: web
+      - run: npx vitest run
+        working-directory: web
+      - run: npm run build
+        working-directory: web
