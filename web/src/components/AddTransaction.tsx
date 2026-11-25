@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { centsFromInput } from '../lib/money';
 import { sealTxPayload } from '../lib/txcrypto';
+import { learnMerchantCategory } from '../lib/merchantMemory';
 import type { TxPayload } from '../../../Worker/src/crypto';
 
 export default function AddTransaction({ categories, onClose, onSave }: { categories: any[], onClose: () => void, onSave: () => void }) {
@@ -37,6 +38,9 @@ export default function AddTransaction({ categories, onClose, onSave }: { catego
       message_id: `manual:${crypto.randomUUID()}`,
       line_idx: 0,
     });
+    if (categoryId) {
+      await learnMerchantCategory(merchant.trim(), categoryId, user.id);
+    }
     setBusy(false);
     onSave();
   }

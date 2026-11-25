@@ -8,6 +8,7 @@ import TallyMeter from '../components/TallyMeter';
 import SetupNudge from '../components/SetupNudge';
 import { decryptTxRows, decryptBudgetRows, sealBudgetPayload } from '../lib/txcrypto';
 import { effectiveBudgets } from '../lib/budgets';
+import { applyLearnedCategories } from '../lib/merchantMemory';
 
 export default function Budget() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -32,7 +33,8 @@ export default function Budget() {
       ]);
       setCategories(cats || []);
       setBudgets(await decryptBudgetRows(buds || []));
-      setTransactions(await decryptTxRows(txns || []));
+      const decrypted = await decryptTxRows(txns || []);
+      setTransactions(await applyLearnedCategories(decrypted));
       setLoading(false);
     }
     load();

@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import ForwardingSetup from '../components/ForwardingSetup';
 import PageHeader from '../components/PageHeader';
 import { loadKeys } from '../lib/keys';
+import LearnedMerchants from '../components/LearnedMerchants';
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -113,6 +114,10 @@ export default function Settings({ session }: { session: Session }) {
                 />
                 <button type="submit" className="bg-ink text-white px-4 py-2 rounded-xl text-sm font-semibold shrink-0">Add</button>
               </form>
+            </Card>
+
+            <Card title="Learned merchants">
+              <LearnedMerchants categories={categories} />
             </Card>
 
             <Card title="Privacy & recovery">

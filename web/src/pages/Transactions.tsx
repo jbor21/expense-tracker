@@ -6,26 +6,46 @@ import MonthSwitcher from '../components/MonthSwitcher';
 import PageHeader from '../components/PageHeader';
 import AddTransaction from '../components/AddTransaction';
 import { decryptTxRows } from '../lib/txcrypto';
+import { normalizeMerchant } from '../lib/categorizer';
+import {
+  applyLearnedCategories,
+  fetchMerchantMemoryMap,
+  isAutoCategorized,
+  learnMerchantCategory,
+} from '../lib/merchantMemory';
 
 export default function Transactions() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [month, setMonth] = useState(() => monthKey(new Date(), tz));
   const [transactions, setTransactions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [memoryMap, setMemoryMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [rememberChoice, setRememberChoice] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     const { startISO, endISO } = monthRange(month, tz);
-    const [{ data: txns }, { data: cats }] = await Promise.all([
+    const [{ data: txns }, { data: cats }, memory] = await Promise.all([
       supabase.from('transactions').select('*, categories(name)').gte('occurred_at', startISO).lt('occurred_at', endISO).order('occurred_at', { ascending: false }),
-      supabase.from('categories').select('id,name').eq('archived', false).order('name')
+      supabase.from('categories').select('id,name').eq('archived', false).order('name'),
+      fetchMerchantMemoryMap(),
     ]);
-    setTransactions(await decryptTxRows(txns || []));
     setCategories(cats || []);
+    setMemoryMap(memory);
+    const decrypted = await decryptTxRows(txns || []);
+    const categorized = await applyLearnedCategories(decrypted);
+    const withCats = (cats || []).length
+      ? categorized.map(t => {
+          if (!t.category_id) return t;
+          const cat = (cats || []).find(c => c.id === t.category_id);
+          return { ...t, categories: cat ? { name: cat.name } : t.categories };
+        })
+      : categorized;
+    setTransactions(withCats);
     setLoading(false);
   }
 
@@ -33,8 +53,24 @@ export default function Transactions() {
     load();
   }, [month, tz]);
 
-  async function updateCategory(txnId: string, categoryId: string) {
+  useEffect(() => {
+    setRememberChoice(true);
+    setConfirmDeleteId(null);
+  }, [editingId]);
+
+  async function updateCategory(txnId: string, categoryId: string, merchantRaw: string, remember: boolean) {
     await supabase.from('transactions').update({ category_id: categoryId || null }).eq('id', txnId);
+
+    if (remember && categoryId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await learnMerchantCategory(merchantRaw, categoryId, user.id);
+        const next = new Map(memoryMap);
+        next.set(normalizeMerchant(merchantRaw), categoryId);
+        setMemoryMap(next);
+      }
+    }
+
     setTransactions(prev => prev.map(t => {
       if (t.id === txnId) {
         const cat = categories.find(c => c.id === categoryId);
@@ -73,7 +109,9 @@ export default function Transactions() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-line divide-y divide-line overflow-hidden">
-            {transactions.map(txn => (
+            {transactions.map(txn => {
+              const auto = isAutoCategorized(txn.merchant_raw, txn.category_id, memoryMap);
+              return (
               <div key={txn.id} className="px-4 py-3 cursor-pointer" onClick={() => toggleRow(txn.id)}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -82,6 +120,7 @@ export default function Transactions() {
                       {dateFmt.format(new Date(txn.occurred_at))}
                       {txn.account_last4 && <> · ••{txn.account_last4}</>}
                       {txn.kind === 'refund' && <> · refund</>}
+                      {auto && <> · remembered</>}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -97,28 +136,39 @@ export default function Transactions() {
                   </div>
                 </div>
                 {editingId === txn.id && (
-                  <div className="flex flex-wrap gap-1.5 mt-2.5" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => updateCategory(txn.id, '')}
-                      className={`text-xs px-2.5 py-1.5 rounded-full border ${!txn.category_id ? 'border-ink bg-ink text-white' : 'border-line bg-white text-faint'}`}>
-                      None
-                    </button>
-                    {categories.map(c => (
-                      <button key={c.id} onClick={() => updateCategory(txn.id, c.id)}
-                        className={`text-xs px-2.5 py-1.5 rounded-full border ${txn.category_id === c.id ? 'border-ink bg-ink text-white' : 'border-line bg-white'}`}>
-                        {c.name}
+                  <div className="mt-2.5 space-y-2.5" onClick={e => e.stopPropagation()}>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={() => updateCategory(txn.id, '', txn.merchant_raw, false)}
+                        className={`text-xs px-2.5 py-1.5 rounded-full border ${!txn.category_id ? 'border-ink bg-ink text-white' : 'border-line bg-white text-faint'}`}>
+                        None
                       </button>
-                    ))}
-                    <button
-                      onClick={() => (confirmDeleteId === txn.id ? deleteTxn(txn.id) : setConfirmDeleteId(txn.id))}
-                      className={`text-xs px-2.5 py-1.5 rounded-full border ml-auto ${
-                        confirmDeleteId === txn.id ? 'border-over bg-over text-white' : 'border-over/40 bg-white text-over'
-                      }`}>
-                      {confirmDeleteId === txn.id ? 'Tap again to delete' : 'Delete'}
-                    </button>
+                      {categories.map(c => (
+                        <button key={c.id} onClick={() => updateCategory(txn.id, c.id, txn.merchant_raw, rememberChoice)}
+                          className={`text-xs px-2.5 py-1.5 rounded-full border ${txn.category_id === c.id ? 'border-ink bg-ink text-white' : 'border-line bg-white'}`}>
+                          {c.name}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => (confirmDeleteId === txn.id ? deleteTxn(txn.id) : setConfirmDeleteId(txn.id))}
+                        className={`text-xs px-2.5 py-1.5 rounded-full border ml-auto ${
+                          confirmDeleteId === txn.id ? 'border-over bg-over text-white' : 'border-over/40 bg-white text-over'
+                        }`}>
+                        {confirmDeleteId === txn.id ? 'Tap again to delete' : 'Delete'}
+                      </button>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-faint cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rememberChoice}
+                        onChange={e => setRememberChoice(e.target.checked)}
+                        className="rounded border-line accent-brand"
+                      />
+                      Remember for future &lsquo;{txn.merchant_raw?.trim()}&rsquo; charges
+                    </label>
                   </div>
                 )}
               </div>
-            ))}
+            );})}
           </div>
         )}
 
